@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Cases (Top)</h3>
+  <div>
+    <a class="btn btn-success me-2" href="{{ url_for('case_new') }}">New Case</a>
+    {% if current_user.is_admin %}
+      <a class="btn btn-outline-primary" href="{{ url_for('users_list') }}">Users</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('labs_list') }}">Labs</a>
+    {% endif %}
+  </div>
+</div>
+<table class="table table-striped">
+  <thead><tr><th>Case #</th><th>Offence</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead>
+  <tbody>
+    {% for c in cases %}
+      <tr>
+        <td><a href="{{ url_for('case_detail', case_number=c.case_number) }}">{{ c.case_number }}</a></td>
+        <td>{{ c.offence_type }}</td>
+        <td><strong>{{ c.priority_score }}</strong></td>
+        <td>{{ c.status }}</td>
+        <td>{{ c.created_at.split('T')[0] if c.created_at else '' }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>Partner Labs</h3>
+<form method="post" class="row g-2 mb-3">
+  <div class="col-md-5"><input class="form-control" name="name" placeholder="Lab name" required></div>
+  <div class="col-md-5"><input class="form-control" name="contact_email" placeholder="Contact email"></div>
+  <div class="col-md-2"><button class="btn btn-primary w-100">Add</button></div>
+</form>
+<table class="table table-striped">
+  <thead><tr><th>Name</th><th>Email</th><th>Status</th></tr></thead>
+  <tbody>
+    {% for lab in labs %}
+      <tr><td>{{ lab.name }}</td><td>{{ lab.contact_email }}</td><td>{{ 'Active' if lab.is_active else 'Inactive' }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

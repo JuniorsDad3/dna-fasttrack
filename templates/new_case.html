@@ -1,0 +1,14 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>New Case</h2>
+<form method="post">
+<input type="text" name="case_id" placeholder="Case ID" class="form-control mb-2" required>
+<input type="text" name="suspect" placeholder="Suspect" class="form-control mb-2" required>
+<select name="priority" class="form-control mb-2">
+  <option value="High">High</option>
+  <option value="Medium">Medium</option>
+  <option value="Low">Low</option>
+</select>
+<button class="btn btn-primary">Create Case</button>
+</form>
+{% endblock %}

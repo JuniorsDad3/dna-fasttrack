@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block content %}
+<h3>Users</h3>
+<form method="post" class="row g-2 mb-3">
+  <div class="col-md-3"><input class="form-control" name="email" placeholder="Email" required></div>
+  <div class="col-md-3"><input class="form-control" name="name" placeholder="Name" required></div>
+  <div class="col-md-2">
+    <select name="role" class="form-select">
+      <option value="officer">Officer</option>
+      <option value="lab">Lab</option>
+      <option value="admin">Admin</option>
+    </select>
+  </div>
+  <div class="col-md-2"><input class="form-control" name="password" placeholder="Password" required></div>
+  <div class="col-md-2"><input class="form-control" name="api_token" placeholder="API token (optional)"></div>
+  <div class="col-md-12 mt-2"><button class="btn btn-primary">Create User</button></div>
+</form>
+<table class="table table-striped">
+  <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>API Token</th></tr></thead>
+  <tbody>
+    {% for u in users %}
+      <tr><td>{{ u.email }}</td><td>{{ u.name }}</td><td>{{ u.role }}</td><td>{{ u.api_token }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
