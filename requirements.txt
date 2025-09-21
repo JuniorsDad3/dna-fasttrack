@@ -5,6 +5,7 @@ click==8.3.0
 colorama==0.4.6
 et_xmlfile==2.0.0
 Flask==3.1.2
+Flask-Login==0.6.3
 gunicorn==23.0.0
 idna==3.10
 itsdangerous==2.2.0
@@ -15,6 +16,7 @@ openpyxl==3.1.5
 packaging==25.0
 pandas==2.3.2
 python-dateutil==2.9.0.post0
+python-dotenv==1.1.1
 pytz==2025.2
 requests==2.32.5
 six==1.17.0
