@@ -1,10 +1,8 @@
-# utils.py
 import hashlib
 import qrcode
 import os
+import pandas as pd  # <-- FIXED
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
-from io import BytesIO
 
 OFFENCE_WEIGHTS = {
     'murder': 100,
@@ -38,3 +36,18 @@ def hash_password(raw):
 
 def check_password_hash_stored(pw_hash, raw):
     return check_password_hash(pw_hash, raw)
+
+def calculate_priority(status, suspect):
+    if status == "open":
+        return (3, "high")
+    elif status == "pending":
+        return 2
+    else:
+        return (1, "low")
+
+def get_priority_tuple(status, suspect):
+    result = calculate_priority(status, suspect)
+    if isinstance(result, (list, tuple)) and len(result) == 2:
+        return result
+    else:
+        return (result, None)

@@ -18,22 +18,25 @@ TABLES = {
 }
 
 class Storage:
-    def __init__(self, instance_path='instance', use_excel=True):
-        self.instance_path = instance_path
-        self.data_dir = os.path.join(self.instance_path, 'data')
-        os.makedirs(self.data_dir, exist_ok=True)
-        self.lock_path = os.path.join(self.data_dir, 'data.lock')
-        self.lock = FileLock(self.lock_path)
+    def __init__(self, file_path='instance/data/forensic_cases.xlsx', use_excel=True):
         self.use_excel = use_excel
-        self.xlsx_path = os.path.join(self.data_dir, 'data_workbook.xlsx')
+        self.xlsx_path = file_path
+        self.data_dir = os.path.dirname(file_path)
+        if self.data_dir:  # avoid empty string
+            os.makedirs(self.data_dir, exist_ok=True)
+        self.lock_path = os.path.join(self.data_dir, 'data.lock') if self.data_dir else 'data.lock'
+        self.lock = FileLock(self.lock_path)
         # S3 config
         self.s3_enabled = bool(int(os.getenv('S3_ENABLED','0')))
         self.s3_bucket = os.getenv('S3_BUCKET','')
         self.s3_key = os.getenv('S3_WORKBOOK_KEY','fasttrack/data_workbook.xlsx')
         self.s3_endpoint = os.getenv('S3_ENDPOINT_URL','') or None
         self.s3_region = os.getenv('S3_REGION','us-east-1')
+
         # initialize s3 client if enabled
         if self.s3_enabled:
+            import boto3
+            from botocore.exceptions import ClientError
             session = boto3.session.Session()
             s3_params = {'region_name': self.s3_region}
             if self.s3_endpoint:
@@ -42,9 +45,10 @@ class Storage:
                                      aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
                                      aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
                                      **s3_params)
-            # attempt to download workbook if present
             self._download_from_s3_if_exists()
+
         self._ensure_tables()
+
 
     def _download_from_s3_if_exists(self):
         try:

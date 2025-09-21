@@ -1,21 +1,26 @@
 import os
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_from_directory, jsonify
-from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+from flask_login import UserMixin, LoginManager, login_user, logout_user, login_required, current_user
 from dotenv import load_dotenv
 from models import User, Lab, Case, Sample, CustodyEvent, ROLE_ADMIN, ROLE_LAB, ROLE_OFFICER
 from security import LoginUser
 from utils import compute_priority, make_qr
-from werkzeug.security import generate_password_hash
+from werkzeug.security import generate_password_hash, check_password_hash
 import csv
 from openpyxl import load_workbook
 from io import BytesIO
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 import secrets
+from storage import Storage
+import pandas as pd
+from flask_login import login_user
 
 
 EXCEL_FILE = 'forensic_cases.xlsx'
+xls = pd.ExcelFile(EXCEL_FILE)
+print(xls.sheet_names)
 
 load_dotenv()
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev')
@@ -29,7 +34,7 @@ app.config['SECRET_KEY'] = SECRET_KEY
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-storage = Storage(instance_path='instance', use_excel=USE_EXCEL)
+storage = Storage('forensic_cases.xlsx')
 
 # simple user wrapper
 class WebUser(UserMixin):
@@ -62,7 +67,7 @@ def load_user(user_id):
 def bootstrap_admin():
     users = storage.all('users')
     if not users:
-        hashed = hash_password(ADMIN_PASSWORD)
+        hashed = generate_password_hash(ADMIN_PASSWORD)
         admin = {
             'email': ADMIN_EMAIL,
             'name': 'Admin',
@@ -72,6 +77,13 @@ def bootstrap_admin():
         }
         storage.append('users', admin)
 bootstrap_admin()
+
+def hash_password(password):
+    return generate_password_hash(password)
+
+# check password during login
+def check_password_hash_stored(stored_hash, password):
+    return check_password_hash(stored_hash, password)
 
 # ---------- UTILITIES ----------
 def read_sheet(sheet_name):
@@ -120,6 +132,13 @@ def calculate_priority(status, suspect):
     if "crime scene" in status.lower():
         score += 5
     return score
+
+def get_priority_tuple(status, suspect):
+    result = calculate_priority(status, suspect)
+    if isinstance(result, (list, tuple)) and len(result) == 2:
+        return result
+    else:
+        return (result, None)
 
 # Helper Functions
 # -------------------
@@ -208,27 +227,73 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        email = request.form['email'].strip().lower()
+        password = request.form['password']
+
+        # Check if user exists
+        users = storage.all('users')
+        if any(u.get('email') == email for u in users):
+            flash("Email already exists", "danger")
+            return redirect(url_for('register'))
+
+        # Save new user
+        new_user = {
+            "email": email,
+            "name": email.split('@')[0],  # optional default name
+            "role": "officer",  # default role
+            "password_hash": generate_password_hash(password),
+            "api_token": ""
+        }
+        storage.append('users', new_user)
+
+        flash("Registration successful. You can now log in.", "success")
+        return redirect(url_for('login'))
+
+    return render_template('register.html')
 
 @app.route('/')
 @login_required
 def dashboard():
-    df = pd.read_excel(EXCEL_FILE, sheet_name="Cases")
-    df["Priority"] = df.apply(lambda row: calculate_priority(row["Status"], row["Suspect"]), axis=1)
+    df = pd.read_excel(EXCEL_FILE, sheet_name="cases")  # ⚠ capital C, check Excel
+
+    def priority_wrapper(status, suspect):
+        result = calculate_priority(status, suspect)
+        if isinstance(result, (list, tuple)):
+            if len(result) >= 2:
+                return (result[0], result[1])
+            elif len(result) == 1:
+                return (result[0], None)
+            else:
+                return (None, None)
+        else:
+            return (result, None)
+
+    # Build a list of tuples [(priority, label), ...]
+    priority_data = [priority_wrapper(row["Status"], row["Suspect"]) for _, row in df.iterrows()]
+    
+    # Create a DataFrame with exactly 2 columns
+    priority_df = pd.DataFrame(priority_data, columns=["Priority", "PriorityLabel"], index=df.index)
+
+    # Merge into df
+    df = pd.concat([df, priority_df], axis=1)
+
+    print(df[["Status", "Suspect", "Priority", "PriorityLabel"]].head())  # debug
+
     df_sorted = df.sort_values(by="Priority", ascending=False)
     cases = storage.all('cases')
-    # sort by priority desc, created_at desc
+
     def sort_key(c):
         try:
-            return (-int(c.get('priority_score',0)), c.get('created_at',''))
+            return (-int(c.get('priority_score', 0)), c.get('created_at', ''))
         except:
-            return (0, c.get('created_at',''))
+            return (0, c.get('created_at', ''))
+
     cases_sorted = sorted(cases, key=sort_key)[:200]
     return render_template('dashboard.html', cases=cases_sorted)
 
-@app.route('/dashboard')
-def dashboard():
-    cases = read_sheet('Cases')
-    return render_template('dashboard.html', cases=cases.to_dict(orient='records'))
 
 @app.route('/admin/users', methods=['GET','POST'])
 @login_required
@@ -344,8 +409,8 @@ def authorize_api(token):
         return None
     return u
 
-@app.route('/case/<case_id>')
-def case_detail(case_id):
+@app.route('/case/<case_id>', endpoint='case_detail_api')
+def case_detail_api(case_id):
     cases = read_sheet('Cases')
     samples = read_sheet('Samples')
     coc = read_sheet('ChainOfCustody')
@@ -385,7 +450,7 @@ def add_sample(case_id):
         os.makedirs("static/qrcodes", exist_ok=True)
         img.save(qr_path)
         samples = load_sheet("Samples")
-        samples = samples.append({"sample_id": sample_id, "case_id": case_id, "description": desc, "qr_path": qr_path}, ignore_index=True)
+        samples = pd.concat({"sample_id": sample_id, "case_id": case_id, "description": desc, "qr_path": qr_path}, ignore_index=True)
         save_sheet(samples, "Samples")
         return redirect(url_for("case_detail", case_id=case_id))
     return render_template("add_sample.html", case_id=case_id)
@@ -397,7 +462,7 @@ def add_event(case_id):
     event = request.form["event"]
     import datetime
     chain = load_sheet("ChainOfCustody")
-    chain = chain.append({"event_id": len(chain)+1, "case_id": case_id, "event": event, "timestamp": datetime.datetime.now()}, ignore_index=True)
+    chain = pd.concat({"event_id": len(chain)+1, "case_id": case_id, "event": event, "timestamp": datetime.datetime.now()}, ignore_index=True)
     save_sheet(chain, "ChainOfCustody")
     return redirect(url_for("case_detail", case_id=case_id))
 
@@ -417,7 +482,7 @@ def add_lab(case_id):
     result = request.form["result"]
     import datetime
     lab = load_sheet("LabResults")
-    lab = lab.append({"case_id": case_id, "lab_name": lab_name, "result": result, "date": datetime.datetime.now()}, ignore_index=True)
+    lab = pd.concat({"case_id": case_id, "lab_name": lab_name, "result": result, "date": datetime.datetime.now()}, ignore_index=True)
     save_sheet(lab, "LabResults")
     return redirect(url_for("case_detail", case_id=case_id))
 
