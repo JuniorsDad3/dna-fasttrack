@@ -1,27 +1,277 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h3>Cases (Top)</h3>
+<div class="d-flex justify-content-between align-items-center mb-4">
   <div>
-    <a class="btn btn-success me-2" href="{{ url_for('case_new') }}">New Case</a>
+    <h3 class="mb-1">Case Dashboard</h3>
+    <p class="text-muted mb-0">Total cases: {{ cases|length }}</p>
+  </div>
+  <div>
+    <a class="btn btn-success me-2" href="{{ url_for('case_new') }}">
+      <i class="fas fa-plus-circle"></i> New Case
+    </a>
     {% if current_user.is_admin %}
-      <a class="btn btn-outline-primary" href="{{ url_for('users_list') }}">Users</a>
-      <a class="btn btn-outline-secondary" href="{{ url_for('labs_list') }}">Labs</a>
+      <a class="btn btn-outline-primary me-2" href="{{ url_for('users_list') }}">
+        <i class="fas fa-users"></i> Users
+      </a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('labs_list') }}">
+        <i class="fas fa-flask"></i> Labs
+      </a>
     {% endif %}
   </div>
 </div>
-<table class="table table-striped">
-  <thead><tr><th>Case #</th><th>Offence</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead>
-  <tbody>
-    {% for c in cases %}
-      <tr>
-        <td><a href="{{ url_for('case_detail', case_number=c.case_number) }}">{{ c.case_number }}</a></td>
-        <td>{{ c.offence_type }}</td>
-        <td><strong>{{ c.priority_score }}</strong></td>
-        <td>{{ c.status }}</td>
-        <td>{{ c.created_at.split('T')[0] if c.created_at else '' }}</td>
-      </tr>
-    {% endfor %}
-  </tbody>
-</table>
+
+<!-- Quick Stats -->
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card bg-primary text-white">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <h4>{{ cases|length }}</h4>
+            <p class="mb-0">Total Cases</p>
+          </div>
+          <div class="align-self-center">
+            <i class="fas fa-folder fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-warning text-dark">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <h4>{{ cases|selectattr('status', 'equalto', 'created')|list|length }}</h4>
+            <p class="mb-0">New Cases</p>
+          </div>
+          <div class="align-self-center">
+            <i class="fas fa-clock fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-info text-white">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <h4>{{ cases|selectattr('status', 'equalto', 'in_lab')|list|length }}</h4>
+            <p class="mb-0">In Lab</p>
+          </div>
+          <div class="align-self-center">
+            <i class="fas fa-flask fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card bg-success text-white">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <h4>{{ cases|selectattr('status', 'equalto', 'completed')|list|length }}</h4>
+            <p class="mb-0">Completed</p>
+          </div>
+          <div class="align-self-center">
+            <i class="fas fa-check-circle fa-2x"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Filters and Search -->
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="row">
+      <div class="col-md-4">
+        <input type="text" class="form-control" id="searchCases" placeholder="Search cases...">
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" id="statusFilter">
+          <option value="">All Statuses</option>
+          <option value="created">Created</option>
+          <option value="in_lab">In Lab</option>
+          <option value="completed">Completed</option>
+          <option value="closed">Closed</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" id="priorityFilter">
+          <option value="">All Priorities</option>
+          <option value="high">High Priority</option>
+          <option value="medium">Medium Priority</option>
+          <option value="low">Low Priority</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-outline-secondary w-100" onclick="resetFilters()">
+          <i class="fas fa-refresh"></i> Reset
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Cases Table -->
+<div class="card">
+  <div class="card-header">
+    <h5 class="card-title mb-0">Recent Cases (Sorted by Priority)</h5>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-striped mb-0" id="casesTable">
+        <thead class="table-light">
+          <tr>
+            <th>Case #</th>
+            <th>Offence Type</th>
+            <th>Priority</th>
+            <th>Status</th>
+            <th>Created By</th>
+            <th>Created Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in cases %}
+          <tr data-status="{{ c.status }}" data-priority="{{ c.priority_score }}">
+            <td>
+              <a href="{{ url_for('case_detail', case_number=c.case_number) }}" class="fw-bold">
+                {{ c.case_number }}
+              </a>
+            </td>
+            <td>{{ c.offence_type }}</td>
+            <td>
+              <span class="badge 
+                {% if c.priority_score >= 8 %}bg-danger
+                {% elif c.priority_score >= 5 %}bg-warning
+                {% else %}bg-info{% endif %}">
+                {{ c.priority_score }} 
+                {% if c.priority_score >= 8 %}(High)
+                {% elif c.priority_score >= 5 %}(Medium)
+                {% else %}(Low){% endif %}
+              </span>
+            </td>
+            <td>
+              <span class="badge 
+                {% if c.status == 'completed' %}bg-success
+                {% elif c.status == 'in_lab' %}bg-info
+                {% elif c.status == 'created' %}bg-warning
+                {% else %}bg-secondary{% endif %}">
+                {{ c.status|replace('_', ' ')|title }}
+              </span>
+            </td>
+            <td>{{ c.created_by }}</td>
+            <td>{{ c.created_at.split('T')[0] if c.created_at else 'N/A' }}</td>
+            <td>
+              <div class="btn-group btn-group-sm">
+                <a href="{{ url_for('case_detail', case_number=c.case_number) }}" 
+                   class="btn btn-outline-primary" title="View Details">
+                  <i class="fas fa-eye"></i>
+                </a>
+                <a href="{{ url_for('case_report', case_number=c.case_number) }}" 
+                   class="btn btn-outline-secondary" title="Download PDF Report">
+                  <i class="fas fa-file-pdf"></i>
+                </a>
+                {% if c.status == 'created' and current_user.is_admin %}
+                <a href="{{ url_for('send_to_lab', case_id=c.case_number) }}" 
+                   class="btn btn-outline-info" title="Send to Lab">
+                  <i class="fas fa-flask"></i>
+                </a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+              <i class="fas fa-folder-open fa-2x mb-2"></i>
+              <p>No cases found. <a href="{{ url_for('case_new') }}">Create your first case</a></p>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- JavaScript for filtering -->
+<script>
+function filterCases() {
+  const search = document.getElementById('searchCases').value.toLowerCase();
+  const statusFilter = document.getElementById('statusFilter').value;
+  const priorityFilter = document.getElementById('priorityFilter').value;
+  const rows = document.querySelectorAll('#casesTable tbody tr');
+  
+  rows.forEach(row => {
+    const caseNumber = row.cells[0].textContent.toLowerCase();
+    const status = row.getAttribute('data-status');
+    const priority = parseInt(row.getAttribute('data-priority'));
+    
+    let show = true;
+    
+    // Search filter
+    if (search && !caseNumber.includes(search)) {
+      show = false;
+    }
+    
+    // Status filter
+    if (statusFilter && status !== statusFilter) {
+      show = false;
+    }
+    
+    // Priority filter
+    if (priorityFilter) {
+      if (priorityFilter === 'high' && priority < 8) show = false;
+      if (priorityFilter === 'medium' && (priority < 5 || priority >= 8)) show = false;
+      if (priorityFilter === 'low' && priority >= 5) show = false;
+    }
+    
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+function resetFilters() {
+  document.getElementById('searchCases').value = '';
+  document.getElementById('statusFilter').value = '';
+  document.getElementById('priorityFilter').value = '';
+  filterCases();
+}
+
+// Add event listeners
+document.getElementById('searchCases').addEventListener('input', filterCases);
+document.getElementById('statusFilter').addEventListener('change', filterCases);
+document.getElementById('priorityFilter').addEventListener('change', filterCases);
+
+// Initialize filters
+document.addEventListener('DOMContentLoaded', function() {
+  filterCases();
+});
+</script>
+
+<style>
+.card {
+  box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+  border: 1px solid #e3e6f0;
+}
+
+.table th {
+  border-top: none;
+  font-weight: 600;
+  color: #6e707e;
+}
+
+.badge {
+  font-size: 0.75em;
+}
+
+.btn-group-sm > .btn {
+  padding: 0.25rem 0.5rem;
+}
+</style>
 {% endblock %}
